@@ -127,6 +127,6 @@ Result LGY_getGbaRtc(GbaRtc *const out);
 Result LGY_backupGbaSave(void);
 #ifdef ARM11
 void LGY_switchMode(void);
-void LGY_handleOverrides(void);
+void LGY_handleOverrides(u16 input);
 void LGY_deinit(void);
 #endif

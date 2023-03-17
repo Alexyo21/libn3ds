@@ -160,19 +160,27 @@ void LGY_switchMode(void)
 	getLgyRegs()->mode = LGY_MODE_START;
 }
 
-void LGY_handleOverrides(void)
+void LGY_handleOverrides(u16 input)
 {
 	Lgy *const lgy = getLgyRegs();
-	// Override D-Pad if Circle-Pad is used.
-	const u32 kHeld = hidKeysHeld();
-	u16 padSel;
-	if(kHeld & KEY_CPAD_MASK)
-	{
-		lgy->pad_val = (kHeld>>24) ^ KEY_DPAD_MASK;
-		padSel = KEY_DPAD_MASK;
+	if (input == 0xffff)
+	{	
+		// Override D-Pad if Circle-Pad is used.
+		const u32 kHeld = hidKeysHeld();
+		u16 padSel;
+		if(kHeld & KEY_CPAD_MASK)
+		{
+			lgy->pad_val = (kHeld>>24) ^ KEY_DPAD_MASK;
+			padSel = KEY_DPAD_MASK;
+		}
+		else padSel = 0;
+		lgy->pad_sel = padSel;
 	}
-	else padSel = 0;
-	lgy->pad_sel = padSel;
+	else
+	{
+		lgy->pad_val = ~(input & 0x3ff);
+		lgy->pad_sel = 0x3ff;
+	}
 }
 
 Result LGY_backupGbaSave(void)

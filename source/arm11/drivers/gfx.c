@@ -371,7 +371,7 @@ void GFX_powerOnBacklights(GfxBlight mask)
 
 	mask <<= 1;
 	MCU_setLcdPower(mask); // Power on backlights.
-	if(MCU_waitIrqs(MCU_LCD_IRQ_MASK) != (u32)mask<<24) panic();
+	//if(MCU_waitIrqs(MCU_LCD_IRQ_MASK) != (u32)mask<<24) panic();
 }
 
 void GFX_powerOffBacklights(GfxBlight mask)
@@ -380,7 +380,7 @@ void GFX_powerOffBacklights(GfxBlight mask)
 	g_gfxState.lcdPower &= ~mask;
 
 	MCU_setLcdPower(mask); // Power off backlights.
-	if(MCU_waitIrqs(MCU_LCD_IRQ_MASK) != (u32)mask<<24) panic();
+	//if(MCU_waitIrqs(MCU_LCD_IRQ_MASK) != (u32)mask<<24) panic();
 }
 
 void GFX_setBrightness(u8 top, u8 bot)

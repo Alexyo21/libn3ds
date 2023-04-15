@@ -25,7 +25,10 @@
 #include "arm9/drivers/interrupt.h"
 #include "drivers/gfx.h"
 #include "arm9/drivers/ndma.h"
+#include "fatfs/ff.h"
+#include "fs.h"
 
+u8 test_buf[0x2000];
 
 
 NOINLINE noreturn void panic(void)
@@ -70,6 +73,25 @@ NOINLINE noreturn void guruMeditation(UNUSED u8 type, UNUSED const u32 *excStack
 		NDMA_fill((u32*)FRAMEBUF_BOT_A_1, color, SCREEN_SIZE_BOT);
 		NDMA_fill((u32*)FRAMEBUF_BOT_A_2, color, SCREEN_SIZE_BOT);
 	}
+}
+
+void dumpMem(u8 *mem, u32 size, char *filepath)
+{
+	FIL file;
+	UINT bytesWritten;
+
+	if(f_open(&file, filepath, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+		return;
+
+	//f_write(&file, mem, size, &bytesWritten);
+	for (int i = 0; i < size; i += 0x1000)
+	{
+		NDMA_copy((u32*)&test_buf[0], (u32*)&mem[i], 0x1000);
+		f_write(&file, test_buf, 0x1000, &bytesWritten);
+	}
+
+	f_sync(&file);
+	f_close(&file);
 }
 
 #ifndef NDEBUG

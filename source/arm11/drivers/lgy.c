@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <string.h>
 #include "types.h"
+#include "drivers/gfx.h"
 #include "drivers/lgy.h"
 #include "drivers/pxi.h"
 #include "ipc_handler.h"
@@ -28,8 +29,11 @@
 #include "drivers/cache.h"
 #include "arm11/drivers/pdn.h"
 #include "arm11/drivers/mcu.h"
+#include "arm11/drivers/timer.h"
+#include "arm11/fmt.h"
 
 
+#define REG_LGY_PADCNT    *((const vu16*)(LGY_REGS_BASE + 0x0A)) // Read-only mirror of ARM7 "KEYCNT".
 #define LGY_REGS_BASE     (IO_MEM_ARM9_ARM11 + 0x41100)
 
 typedef struct
@@ -57,23 +61,24 @@ ALWAYS_INLINE Lgy* getLgyRegs(void)
 	return (Lgy*)LGY_REGS_BASE;
 }
 
-
+static bool bLgyIsSleeping = false;
+static bool bLgyIsSleepingActual = false;
+static bool bNeedsWakeCmd = false;
 
 static void lgySleepIsr(u32 intSource)
 {
 	Lgy *const lgy = getLgyRegs();
 	if(intSource == IRQ_LGY_SLEEP)
 	{
-		// Workaround for The Legend of Zelda - A Link to the Past.
-		// This game doesn't set the IRQ enable bit so we force it
-		// on the 3DS side. Unknown if other games have this bug.
-		REG_HID_PADCNT = lgy->padcnt | 1u<<14;
+		bLgyIsSleeping = true;
 	}
 	else // IRQ_HID_PADCNT
 	{
 		// TODO: Synchronize with LCD VBlank.
-		REG_HID_PADCNT = 0;
+		REG_HID_PADCNT = REG_LGY_PADCNT & ~(1<<14);
 		lgy->sleep |= 1u; // Acknowledge and wakeup.
+
+		bLgyIsSleeping = false;
 	}
 }
 
@@ -188,10 +193,61 @@ Result LGY_backupGbaSave(void)
 	return PXI_sendCmd(IPC_CMD9_BACKUP_GBA_SAVE, NULL, 0);
 }
 
+int LGY_isSleeping(void)
+{
+	return bLgyIsSleeping;
+}
+
 void LGY_deinit(void)
 {
 	LGY_backupGbaSave();
 
 	IRQ_unregisterIsr(IRQ_LGY_SLEEP);
 	IRQ_unregisterIsr(IRQ_HID_PADCNT);
+}
+
+void LGY_sleepGba(void)
+{
+	if (bLgyIsSleepingActual) return;
+
+	// Workaround for The Legend of Zelda - A Link to the Past.
+	// This game doesn't set the IRQ enable bit so we force it
+	// on the 3DS side. Unknown if other games have this bug.
+	REG_HID_PADCNT = REG_LGY_PADCNT | 1u<<14;
+
+	bNeedsWakeCmd = false;
+
+	// Only attempt to force GBA into sleep if we're not asleep
+	if (!bLgyIsSleeping)
+	{
+		bNeedsWakeCmd = true;
+		PXI_sendCmd(IPC_CMD9_SLEEPGBA, NULL, 0);
+	}
+
+	bLgyIsSleepingActual = true;
+}
+
+void LGY_wakeGba(void)
+{
+	if (!bLgyIsSleepingActual) return;
+
+	Lgy *const lgy = getLgyRegs();
+
+	// Only pull GBA out of forced sleep if sleep was forced
+	if (bNeedsWakeCmd)
+	{
+		//REG_HID_PADCNT = REG_LGY_PADCNT & ~(1<<14);
+		lgy->sleep |= 1u; // Acknowledge and wakeup.
+
+		// Wait a frame just in case waking takes a bit
+		TIMER_sleepMs(17);
+
+		PXI_sendCmd(IPC_CMD9_WAKEGBA, NULL, 0);
+
+		// Wait a frame for ARM9 to finish waking
+		TIMER_sleepMs(17);
+	}
+
+	bNeedsWakeCmd = false;
+	bLgyIsSleepingActual = false;
 }

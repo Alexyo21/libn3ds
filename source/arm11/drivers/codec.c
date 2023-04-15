@@ -744,6 +744,80 @@ void CODEC_wakeup(void)
 	TIMER_sleepMs(18); // Fixed 18 ms delay when unsetting this GPIO.
 }
 
+static void codecSwitchBank(u8 bank)
+{
+	static u8 curBank = 0x63;
+	if(curBank != bank)
+	{
+		curBank = bank;
+
+		alignas(4) u8 inBuf[4];
+		inBuf[0] = 0; // Write
+		inBuf[1] = bank;
+		NSPI_writeRead(NSPI_DEV_CTR_CODEC, (u32*)inBuf, NULL, 2, 0);
+	}
+}
+
+static void codecReadRegBuf(u8 bank, u8 reg, u32 *buf, u32 size)
+{
+	codecSwitchBank(bank);
+
+	alignas(4) u8 inBuf[4];
+	inBuf[0] = reg<<1 | 1u;
+	NSPI_writeRead(NSPI_DEV_CTR_CODEC, (u32*)inBuf, buf, 1, size);
+}
+
+static u8 codecReadReg(u8 bank, u8 reg)
+{
+	alignas(4) u8 outBuf[4];
+	codecReadRegBuf(bank, reg, (u32*)outBuf, 1);
+
+	return outBuf[0];
+}
+
+static void codecWriteRegBuf(u8 bank, u8 reg, u32 *buf, u32 size)
+{
+	codecSwitchBank(bank);
+
+	alignas(4) u8 inBuf[4];
+	inBuf[0] = reg<<1; // Write
+	NSPI_writeRead(NSPI_DEV_CTR_CODEC, (u32*)inBuf, NULL, 1, 0);
+	NSPI_writeRead(NSPI_DEV_CTR_CODEC, buf, NULL, size, 0);
+}
+
+static void codecWriteReg(u8 bank, u8 reg, u8 val)
+{
+	codecSwitchBank(bank);
+
+	alignas(4) u8 inBuf[4];
+	inBuf[0] = reg<<1; // Write
+	inBuf[1] = val;
+	NSPI_writeRead(NSPI_DEV_CTR_CODEC, (u32*)inBuf, NULL, 2, 0);
+}
+
+static void codecMaskReg(u8 bank, u8 reg, u8 val, u8 mask)
+{
+	u8 data = codecReadReg(bank, reg);
+	data = (data & ~mask) | (val & mask);
+	codecWriteReg(bank, reg, data);
+}
+
+void CODEC_muteI2S(void)
+{
+    codecMaskReg(0x00, 0x3F, 0x00, 0xC0);
+    codecWriteReg(0x00, 0x40, 0x0C);
+
+    codecMaskReg(0x64, 0x77, 0xC, 0xC);
+}
+
+void CODEC_unmuteI2S(void)
+{
+    codecMaskReg(0x00, 0x3F, 0xC0, 0xC0);
+    codecWriteReg(0x00, 0x40, 0x00);
+
+    codecMaskReg(0x64, 0x77, 0x0, 0xC);
+}
+
 bool CODEC_getRawAdcData(CdcAdcData *data)
 {
 	if((readReg(CDC_REG_103_38) & 2u) == 0)
